@@ -1,6 +1,7 @@
 library("readr")
 library("tidyverse")
 library("lubridate")
+library("ggthemes")
 
 # create script that will automatically read in all previous days of data
 # df1: groups by country
@@ -61,8 +62,11 @@ x <- df.covid %>%
   arrange(Country, Date, Province_State, County, 
           Confirmed, Deaths, Recovered, Combined_Key, Incidence_Rate, `Case-Fatality_Ratio`) %>%
   group_by(Combined_Key) %>%
-  mutate(Deaths_Increase = Deaths - lag(Deaths, order_by = Combined_Key),
-         Confirmed_Increase = Confirmed - lag(Confirmed, order_by = Combined_Key)) %>%
+  # for some reason the total Confirmed/deaths decrease occasionally, so changing to 0 if negative
+  mutate(Deaths_Increase = ifelse((Deaths - lag(Deaths, order_by = Combined_Key)) > 0,
+                                  Deaths - lag(Deaths, order_by = Combined_Key), 0),
+         Confirmed_Increase = ifelse((Confirmed - lag(Confirmed, order_by = Combined_Key)) > 0,
+                                     Confirmed - lag(Confirmed, order_by = Combined_Key), 0)) %>%
   # filtering out what must be data errors (7000 + deaths in one neighborhood in one day)
   # I am assuming that they added in these areas and possibly all deaths that happened in the area
   # beforehand
@@ -84,19 +88,62 @@ names.us_states <- c(state.name, "Virgin Islands", "Guam", "District of Columbia
 # These errors had very few deaths and confirmed cases
 us_states <- x %>%
   filter(Country == "US", Province_State %in% names.us_states)  %>% 
-  group_by(Province_State, Date) %>%
-  summarise(Deaths_Increase = sum(Confirmed_Increase, na.rm = T))
+  group_by(Province_State) %>%
+  summarise(Deaths_Increase = sum(Deaths_Increase, na.rm = T),
+            Confirmed_Increase = sum(Confirmed_Increase, na.rm = T)) %>%
+  pivot_longer(cols = c(Deaths_Increase, Confirmed_Increase), names_to = "Metric")
 
-us <- x %>%
+US <- x %>%
   filter(Country == "US")  %>% 
-  group_by(Country, Date) %>%
-  summarise(Deaths_Increase = sum(Confirmed_Increase, na.rm = T))
+  group_by(Country) %>%
+  summarise(Deaths_Increase = sum(Deaths_Increase, na.rm = T),
+            Confirmed_Increase = sum(Confirmed_Increase, na.rm = T)) %>%
+  pivot_longer(cols = c(Deaths_Increase, Confirmed_Increase), names_to = "Metric")
 
 CA_counties <- x %>%
-  filter(Country == "US", Province_State == "California") %>%
-  group_by(County) %>%
-  summarise(Deaths_Increase = sum(Confirmed_Increase, na.rm = T))
+  filter(Country == "US", Province_State == "California", !is.na(County), County != "Unassigned") %>%
+  group_by(County, Date) %>%
+  summarise(Deaths_Increase = sum(Deaths_Increase, na.rm = T),
+            Confirmed_Increase = sum(Confirmed_Increase, na.rm = T)) %>%
+  pivot_longer(cols = c(Deaths_Increase, Confirmed_Increase), names_to = "Metric")
 
 International <- x %>%
-  group_by(Country) %>%
-  summarise(Deaths_Increase = sum(Confirmed_Increase, na.rm = T))
+  filter(Country %in% c("US", "United Kingdom", "Canada")) %>%
+  group_by(Country, Date) %>%
+  summarise(Deaths_Increase = sum(Deaths_Increase, na.rm = T),
+            Confirmed_Increase = sum(Confirmed_Increase, na.rm = T)) %>%
+  pivot_longer(cols = c(Deaths_Increase, Confirmed_Increase), names_to = "Metric")
+
+names.countries <- unique(International$Country)
+
+CA_counties %>%
+  filter(County == "San Luis Obispo") %>%
+  ggplot(aes(x = Date, y = value, color = Metric)) +
+  geom_smooth(se = F, span = 0.2) + 
+  geom_point(alpha = 0.1) +
+  ylim(0, 35) +
+  scale_x_date(date_labels = "%B", date_breaks = "1 month") +
+  ggtitle("Daily COVID Metrics", subtitle = "San Luis Obispo County") +
+  xlab("Month (2020(") +
+  ylab("Metric") +
+  theme_fivethirtyeight()
+
+US %>%
+  ggplot(aes(x = Date, y = value, color = Metric)) +
+  geom_smooth(se = F, span = 0.2) + 
+  geom_point(alpha = 0.1) +
+  #ylim(0, 150) +
+  scale_x_date(date_labels = "%B", date_breaks = "1 month") +
+  theme_bw()
+
+International %>%
+  filter(Metric == "Deaths_Increase") %>%
+  ggplot(aes(x = Date, y = value, color = Country)) +
+  geom_smooth(se = F, span = 0.2) + 
+  geom_point(alpha = 0.1) +
+  ylim(0, 2700) +
+  scale_x_date(date_labels = "%B", date_breaks = "1 month") +
+  theme_bw() +
+  ggtitle("COVID Daily Deaths by Country") + 
+  ylab("Deaths")
+
