@@ -60,20 +60,22 @@ CA_Counties.Cases <- US_County.Cases %>%
   filter(State == "California")
 
 CA_Counties.Cases %>%
-  filter(County %in% c("Ventura", "San Luis Obispo", "Orange", "Los Angeles", "San Mateo")) %>%
+  filter(County %in% c("Ventura",  "Los Angeles", "San Diego")) %>%
   ggplot(aes(x = Date, y = Cases.increase.per.thousand, color = County)) +
-  geom_smooth(se = F, span = 0.2) 
+  geom_smooth(se = F, span = 0.2) + 
+  theme_bw()
 
 CA_Counties.Deaths %>%
-  filter(County %in% c("Ventura", "San Luis Obispo", "Orange", "Los Angeles", "San Mateo")) %>%
+  filter(County %in% c("Ventura",  "Los Angeles", "San Diego")) %>%
   ggplot(aes(x = Date, y = Deaths.increase.per.thousand, color = County)) +
-  geom_smooth(se = F, span = 0.2) 
+  geom_smooth(se = F, span = 0.2)  + 
+  theme_bw()
 
 x <- bind_cols(CA_Counties.Cases, CA_Counties.Deaths)
 full_county <- full_join(CA_Counties.Cases, CA_Counties.Deaths)
 
 full_county %>%
-  filter(County %in% c("Ventura", "San Luis Obispo", "Los Angeles")) %>%
+  filter(County %in% c("Ventura", "Orange")) %>%
   ggplot(aes(x = Date, y = Deaths.increase.per.thousand, color = County)) +
   geom_smooth(se = F, span = 0.15, linetype = "dashed") +
   geom_smooth(aes(y = Cases.increase.per.thousand), se = F, span = 0.1) +
@@ -91,20 +93,10 @@ Global_Deaths <- read_csv("https://raw.githubusercontent.com/CSSEGISandData/COVI
 
 colnames(CA_Counties.Cases)
 
-if(!dir.exists("data")) dir.create("data")
-download.file("http://gapm.io/dl_pop", destfile = "data/pop1800_2100.xlsx")
-world_pop = read_excel("data/pop1800_2100.xlsx", sheet = 7)
-
-
-
-pop_url <- "https://data.worldbank.org/indicator/SP.POP.TOTL"
-html <- read_html(pop_url)
-
-lego_url <- "http://www.imdb.com/title/tt1490017/"
-html1 <- read_html(lego_url)
-
 
 country.populations <- read_csv("Population_by_Country.csv")
+
+
 
 
 CA_Counties.Deaths %>%
@@ -137,3 +129,35 @@ International %>%
   theme_bw() +
   ggtitle("COVID Daily Deaths by Country") + 
   ylab("Deaths")
+
+
+
+US_State.Cases <- read_csv("https://raw.githubusercontent.com/CSSEGISandData/COVID-19/master/csse_covid_19_data/csse_covid_19_time_series/time_series_covid19_confirmed_US.csv") %>%
+  left_join(county.populations) %>%
+  select(Population, everything()) %>%
+  mutate(State = Province_State,
+         County = Admin2) %>%
+  filter(State %in% names.us_states) %>%
+  select(State, County, Combined_Key, Population,
+         !(c(Lat, Long_, UID, iso2, iso3, code3, FIPS, Admin2, Province_State, Country_Region))) %>%
+  pivot_longer(cols = !(State:Population), names_to = "Date") %>%
+  mutate(Total_Cases = value,
+         Cases.increase = ifelse((Total_Cases - lag(Total_Cases, order_by = Combined_Key)) > 0,
+                                 Total_Cases - lag(Total_Cases, order_by = Combined_Key), 0),
+         Cases.increase.per.thousand = (Cases.increase / Population) * 1000) %>%
+  filter(!(Date == "5/18/20" & 
+             Combined_Key %in% 
+             c("Kings, New York, US", "Queens, New York, US", "Bronx, New York, US", "	Richmond, New York, US" )),
+         Population > 0) %>%
+  select(!value) %>%
+  mutate(Date = mdy(Date)) %>%
+  group_by(State, Date) %>%
+  summarise(S_Cases_Increase = sum(Cases.increase, na.rm = T),
+            S_population = sum(Population, na.rm = T),
+            S_Cases.increase.per.thousand = ((S_Cases_Increase / S_population) * 1000))
+
+CA_State.cases <- US_State.Cases %>%
+  filter(State %in% c("California", "Florida")) %>%
+  ggplot(aes(x = Date, y = S_Cases.increase.per.thousand, color = State)) +
+  geom_smooth(se = F, span = 0.2)
+

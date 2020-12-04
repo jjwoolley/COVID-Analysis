@@ -147,3 +147,9 @@ International %>%
   ggtitle("COVID Daily Deaths by Country") + 
   ylab("Deaths")
 
+
+
+US_County_Deaths <- read_csv("https://raw.githubusercontent.com/CSSEGISandData/COVID-19/master/csse_covid_19_data/csse_covid_19_time_series/time_series_covid19_deaths_US.csv") %>%
+  mutate(State = Province_State,
+         County = Admin2) %>%
+  filter(State %in% names.us_states)
